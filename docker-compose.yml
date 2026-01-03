@@ -1,0 +1,130 @@
+version: '3.8'
+
+# =============================================================================
+# MCP-HIVE Unified Stack
+# =============================================================================
+# Architecture:
+#   - Frontend (React/Vite) -> :5173
+#   - Backend (FastAPI) -> :8000
+#   - Ollama LLM -> :11434 (DGX Spark)
+#   - MCP Servers (Hive, INSEE, Cotations) via stdio
+# =============================================================================
+
+services:
+  # ===========================================================================
+  # FRONTEND - React Application
+  # ===========================================================================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: mcp-hive-frontend
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_BASE_URL=http://localhost:8000
+      - VITE_APP_NAME=MCP-HIVE
+      - VITE_ENABLE_DEVTOOLS=true
+    depends_on:
+      smarthub-api:
+        condition: service_healthy
+    networks:
+      - mcp-hive-network
+    restart: unless-stopped
+
+  # ===========================================================================
+  # BACKEND - FastAPI SmartHub API
+  # ===========================================================================
+  smarthub-api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: mcp-hive-api
+    ports:
+      - "8000:8000"
+    environment:
+      # API Settings
+      - SMARTHUB_DEBUG=false
+      - SMARTHUB_API_HOST=0.0.0.0
+      - SMARTHUB_API_PORT=8000
+      - SMARTHUB_CORS_ORIGINS=["http://localhost:5173","http://localhost:3000","http://127.0.0.1:5173"]
+      - SMARTHUB_SSE_RETRY_MS=3000
+      - SMARTHUB_STREAM_TIMEOUT_SECONDS=300
+      # Ollama Settings
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://192.168.1.146:11434}
+      - OLLAMA_DEFAULT_MODEL=${OLLAMA_DEFAULT_MODEL:-devstral-small-2:latest}
+      - OLLAMA_REQUEST_TIMEOUT=120
+      - OLLAMA_NUM_CTX=8192
+      - OLLAMA_NUM_PREDICT=2048
+      # MCP Settings
+      - MCP_CONFIG_FILE=/app/config/mcp_servers.json
+      - MCP_CONNECTION_TIMEOUT=30
+      # Conversation Settings
+      - CONVERSATION_MAX_HISTORY_MESSAGES=50
+      - CONVERSATION_TTL_HOURS=24
+      - CONVERSATION_MAX_TOOL_ITERATIONS=10
+      # Hive Database
+      - HIVE_HOST=${HIVE_HOST:-192.168.1.146}
+      - HIVE_PORT=${HIVE_PORT:-10000}
+      - HIVE_DATABASE=${HIVE_DATABASE:-regen_db}
+    volumes:
+      - ./backend/app:/app/app:ro
+      - ./backend/config:/app/config:ro
+      - ./backend/mcp-servers:/app/mcp-servers:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - mcp-hive-network
+    restart: unless-stopped
+
+  # ===========================================================================
+  # OLLAMA - LLM Server (Optional - Use if running locally)
+  # ===========================================================================
+  ollama:
+    image: ollama/ollama:latest
+    container_name: mcp-hive-ollama
+    profiles:
+      - with-ollama
+    ports:
+      - "11434:11434"
+    environment:
+      - OLLAMA_NUM_PARALLEL=4
+      - OLLAMA_MAX_LOADED_MODELS=2
+      - OLLAMA_FLASH_ATTENTION=1
+    volumes:
+      - ollama_models:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - mcp-hive-network
+    restart: unless-stopped
+
+# =============================================================================
+# NETWORKS
+# =============================================================================
+networks:
+  mcp-hive-network:
+    driver: bridge
+    name: mcp-hive-network
+
+# =============================================================================
+# VOLUMES
+# =============================================================================
+volumes:
+  ollama_models:
+    name: mcp-hive-ollama-models

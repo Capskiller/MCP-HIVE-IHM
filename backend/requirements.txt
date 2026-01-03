@@ -1,0 +1,29 @@
+# Core
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+pydantic>=2.10.0
+pydantic-settings>=2.6.0
+
+# SSE Streaming
+sse-starlette>=2.2.0
+
+# MCP SDK (Anthropic)
+mcp>=1.0.0
+
+# Hive Database (using pure-sasl instead of sasl for ARM compatibility)
+pyhive>=0.7.0
+thrift>=0.16.0
+pure-sasl>=0.6.2
+thrift-sasl>=0.4.3
+
+# Ollama
+ollama>=0.4.0
+
+# HTTP Client
+httpx>=0.28.0
+
+# Async utilities
+anyio>=4.6.0
+
+# Production
+gunicorn>=23.0.0

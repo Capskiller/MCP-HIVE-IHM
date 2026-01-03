@@ -1,0 +1,25 @@
+{
+  "servers": [
+    {
+      "name": "hive",
+      "transport": "stdio",
+      "command": "python",
+      "args": ["/app/mcp-servers/hive/server.py"],
+      "enabled": true
+    },
+    {
+      "name": "cotations",
+      "transport": "stdio",
+      "command": "python",
+      "args": ["/app/mcp-servers/cotations/server.py"],
+      "enabled": true
+    },
+    {
+      "name": "insee",
+      "transport": "stdio",
+      "command": "python",
+      "args": ["/app/mcp-servers/insee/server.py"],
+      "enabled": true
+    }
+  ]
+}

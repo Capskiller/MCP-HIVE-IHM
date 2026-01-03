@@ -1,0 +1,142 @@
+version: "3.9"
+
+services:
+  # ===========================================
+  # MCP-HIVE-SmartHub API (Orchestrator)
+  # ===========================================
+  smarthub-api:
+    build:
+      context: .
+      target: ${BUILD_TARGET:-development}
+    container_name: mcp-hive-smarthub
+    ports:
+      - "8000:8000"
+    environment:
+      - SMARTHUB_DEBUG=${DEBUG:-true}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://192.168.1.146:11434}
+      - MCP_CONFIG_FILE=/app/config/mcp_servers.json
+    volumes:
+      - ./app:/app/app:ro
+      - ./config:/app/config:ro
+    # depends_on:
+    #   ollama:
+    #     condition: service_healthy
+    networks:
+      - mcp-hive-network
+    restart: unless-stopped
+
+  # ===========================================
+  # Ollama LLM Server (GPU accelerated)
+  # ===========================================
+  ollama:
+    image: ollama/ollama:latest
+    container_name: mcp-hive-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    environment:
+      - OLLAMA_NUM_PARALLEL=4
+      - OLLAMA_MAX_LOADED_MODELS=2
+    networks:
+      - mcp-hive-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    # GPU support (uncomment for NVIDIA GPU)
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+  # ===========================================
+  # MCP Server: Hive Database
+  # ===========================================
+  mcp-hive:
+    build:
+      context: ./mcp-servers/hive
+    container_name: mcp-server-hive
+    environment:
+      - HIVE_HOST=${HIVE_HOST:-hive-server}
+      - HIVE_PORT=${HIVE_PORT:-10000}
+      - HIVE_DATABASE=${HIVE_DATABASE:-regen_db}
+    networks:
+      - mcp-hive-network
+    restart: unless-stopped
+    # Note: MCP servers communicate via stdio, exposed to smarthub-api
+
+  # ===========================================
+  # MCP Server: PDF Cotations
+  # ===========================================
+  mcp-cotations:
+    build:
+      context: ./mcp-servers/cotations
+    container_name: mcp-server-cotations
+    environment:
+      - PDF_STORAGE_PATH=/data/cotations
+    volumes:
+      - cotations_data:/data/cotations:ro
+    networks:
+      - mcp-hive-network
+    restart: unless-stopped
+
+  # ===========================================
+  # MCP Server: INSEE QPV Data
+  # ===========================================
+  mcp-insee:
+    build:
+      context: ./mcp-servers/insee
+    container_name: mcp-server-insee
+    environment:
+      - INSEE_DATA_PATH=/data/insee
+    volumes:
+      - insee_data:/data/insee:ro
+    networks:
+      - mcp-hive-network
+    restart: unless-stopped
+
+  # ===========================================
+  # Frontend (React)
+  # ===========================================
+  frontend:
+    build:
+      context: ../MCP-HIVE-IHM
+      target: ${FRONTEND_TARGET:-development}
+    container_name: mcp-hive-frontend
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_BASE_URL=http://localhost:8000
+    volumes:
+      - ../MCP-HIVE-IHM/src:/app/src:ro
+    depends_on:
+      - smarthub-api
+    networks:
+      - mcp-hive-network
+    restart: unless-stopped
+
+# ===========================================
+# Volumes
+# ===========================================
+volumes:
+  ollama_models:
+    name: mcp-hive-ollama-models
+  cotations_data:
+    name: mcp-hive-cotations
+  insee_data:
+    name: mcp-hive-insee
+
+# ===========================================
+# Networks
+# ===========================================
+networks:
+  mcp-hive-network:
+    name: mcp-hive-network
+    driver: bridge

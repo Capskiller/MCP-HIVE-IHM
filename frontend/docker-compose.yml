@@ -1,0 +1,87 @@
+# =============================================================================
+# MCP-HIVE-IHM Frontend - Docker Compose
+# Development & Production configurations
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # Development server with hot reload
+  # ---------------------------------------------------------------------------
+  frontend-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: mcp-hive-frontend-dev
+    ports:
+      - "5173:5173"
+    volumes:
+      # Mount source code for hot reload
+      - .:/app
+      # Anonymous volume for node_modules (prevents overwrite)
+      - /app/node_modules
+    environment:
+      - NODE_ENV=development
+      - VITE_API_BASE_URL=http://host.docker.internal:8000
+      - VITE_ENABLE_DEVTOOLS=true
+      - VITE_APP_NAME=MCP-HIVE SmartHub
+      - VITE_DEFAULT_LANGUAGE=fr
+      - CHOKIDAR_USEPOLLING=true  # For file watching in Docker
+      - COREPACK_ENABLE_DOWNLOAD_PROMPT=0  # Auto-approve pnpm download
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - mcp-hive-network
+    stdin_open: true
+    tty: true
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Production build with nginx
+  # ---------------------------------------------------------------------------
+  frontend-prod:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: mcp-hive-frontend-prod
+    ports:
+      - "80:80"
+    environment:
+      - NODE_ENV=production
+    networks:
+      - mcp-hive-network
+    restart: unless-stopped
+    profiles:
+      - production
+
+  # ---------------------------------------------------------------------------
+  # Init container - Install dependencies
+  # ---------------------------------------------------------------------------
+  init:
+    image: node:22-alpine
+    container_name: mcp-hive-frontend-init
+    working_dir: /app
+    volumes:
+      - .:/app
+    command: >
+      sh -c "
+        echo '🚀 Installing pnpm...' &&
+        corepack enable &&
+        corepack prepare pnpm@9.15.1 --activate &&
+
+        echo '📦 Installing dependencies from package.json...' &&
+        pnpm install &&
+
+        echo '✅ All dependencies installed!' &&
+        echo '' &&
+        echo '🎉 Project ready! Run: docker compose up frontend-dev' &&
+        echo '   Then open: http://localhost:5173'
+      "
+    profiles:
+      - init
+
+networks:
+  mcp-hive-network:
+    driver: bridge
+    name: mcp-hive-network
