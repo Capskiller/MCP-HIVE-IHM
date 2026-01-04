@@ -8,7 +8,7 @@ Full-stack application demonstrating transparent LLM + MCP (Model Context Protoc
 - `frontend/` - React 18 + TypeScript + Vite (port 5173)
 - `backend/` - FastAPI + Python 3.12 (port 8000)
 
-**Version:** 0.3.0
+**Version:** 0.4.0
 
 ---
 

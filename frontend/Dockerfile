@@ -1,6 +1,6 @@
 # =============================================================================
 # MCP-HIVE-IHM Frontend - Development Dockerfile
-# Node.js 22 LTS + pnpm 9.x + Vite
+# Node.js 22 LTS + npm + Vite
 # =============================================================================
 
 FROM node:22-alpine AS development
@@ -9,9 +9,6 @@ FROM node:22-alpine AS development
 LABEL maintainer="MCP-HIVE Team"
 LABEL description="Frontend development environment for MCP-HIVE-SmartHub"
 LABEL version="1.0.0"
-
-# Install pnpm globally (version 9.x - latest stable)
-RUN corepack enable && corepack prepare pnpm@9.15.1 --activate
 
 # Install additional tools for development
 RUN apk add --no-cache \
@@ -28,10 +25,10 @@ RUN addgroup -g 1001 -S nodejs \
     && adduser -S vite -u 1001 -G nodejs
 
 # Copy package files first (for better layer caching)
-COPY --chown=vite:nodejs package.json pnpm-lock.yaml* ./
+COPY --chown=vite:nodejs package.json package-lock.json* ./
 
 # Install dependencies
-RUN pnpm install --frozen-lockfile 2>/dev/null || pnpm install
+RUN npm ci 2>/dev/null || npm install
 
 # Copy source code
 COPY --chown=vite:nodejs . .
@@ -54,22 +51,20 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:5173 || exit 1
 
 # Default command: start Vite dev server with HMR
-CMD ["pnpm", "dev", "--host", "0.0.0.0"]
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
 
 # =============================================================================
 # Production build stage
 # =============================================================================
 FROM node:22-alpine AS builder
 
-RUN corepack enable && corepack prepare pnpm@9.15.1 --activate
-
 WORKDIR /app
 
-COPY package.json pnpm-lock.yaml* ./
-RUN pnpm install --frozen-lockfile
+COPY package.json package-lock.json* ./
+RUN npm ci 2>/dev/null || npm install
 
 COPY . .
-RUN pnpm build
+RUN npm run build
 
 # =============================================================================
 # Production serve stage (nginx)
